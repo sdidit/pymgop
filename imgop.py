@@ -261,7 +261,7 @@ def resize(im, fw, fh=0.0):
     w, h = im.size
     w = int(fw * w)
     h = int(fh * h)
-    return im.resize((w, h), Image.ANTIALIAS)
+    return im.resize((w, h))
 
 
 def resize_pow2(im, scale_width, bgcolor):
@@ -272,7 +272,7 @@ def resize_pow2(im, scale_width, bgcolor):
     else:
         nw = _round_up_to_pow(w)
         nh = int((h * nw + w // 2) / w)
-    im2 = im if nw == w and nh == h else im.resize((nw, nh), Image.ANTIALIAS)
+    im2 = im if nw == w and nh == h else im.resize((nw, nh))
     im3 = canvas_size_pow2(im2, bgcolor)
     if im3 is None:
         return None if im2 is im else im2
@@ -389,6 +389,10 @@ def t2(ims, settings):
 
 def t3(ims, settings):
     return x3(ims, settings)
+
+
+def t5(ims, settings):
+    return x5(ims, settings)
 
 
 def t4(ims, settings):
@@ -562,7 +566,7 @@ def rsz(im, settings):
     elif not height:
         fh = float(width) / float(w)
         height = int(fh * h)
-    return im.resize((width, height), Image.ANTIALIAS)
+    return im.resize((width, height))
 
 
 # noinspection PyUnusedLocal
@@ -662,8 +666,17 @@ def d20(im, settings):
 
 
 # noinspection PyUnusedLocal
+def gb1(im, settings):
+    return gaussian_blur(im, 1)
+
+
+# noinspection PyUnusedLocal
 def gb2(im, settings):
     return gaussian_blur(im, 2)
+
+
+def gb3(im, settings):
+    return gaussian_blur(im, 3)
 
 
 # noinspection PyUnusedLocal
@@ -724,6 +737,7 @@ operlist = [
     (t2, 'tile 2x1 images, specify 2 input files'),
     (t3, 'tile 3x1 images, specify 3 input files'),
     (t4, 'tile 2x2 images, specify 4 input files'),
+    (t5, 'tile 5x1 images, specify 5 input files'),
     (t6, 'tile 3x2 images, specify 6 input files'),
     (t8, 'tile 4x2 images, specify 8 input files'),
     (t9, 'tile 3x3 images, specify 9 input files'),
@@ -779,7 +793,9 @@ operlist = [
     (d5, 'darken image by 5%'),
     (d10, 'darken image by 10%'),
     (d20, 'darken image by 20%'),
+    (gb1, 'gaussian blur image 1 pixel radius'),
     (gb2, 'gaussian blur image 2 pixels radius'),
+    (gb3, 'gaussian blur image 3 pixels radius'),
     (gb4, 'gaussian blur image 4 pixels radius'),
     (gb8, 'gaussian blur image 8 pixels radius'),
     (gb12, 'gaussian blur image 12 pixels radius'),
