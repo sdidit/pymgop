@@ -2,7 +2,7 @@ from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals
 
-import getopt
+import argparse
 import glob
 import math
 import ntpath
@@ -10,32 +10,6 @@ import re
 import sys
 
 from PIL import Image, ImageEnhance, ImageOps, ImageSequence, ImageFilter, ImageDraw
-
-usage_string = '''Usage: imgop operation,... [options] file ...
-Options:
-  -o output            Output file name (requires one input file) 
-  -b background        Background color name or RGB/RGBA hex code with #, 'none' for transparent
-  -q quality           Output quality % (default 95)
-  -f frame             Frame index if input file is an animated GIF
-  -c cutoff            For ac op: cut-off % (default 5)
-  -r crop rect         For kr op: rectangle x1/y1/x2/y2
-  -x offset            For sz op: x offset in pixels, negative aligns at the right
-  -y offset            For sz op: y offset in pixels, negative aligns at the bottom
-  -w width             For rsz op: width in pixels
-  -h height            For rsz op: height in pixels
-  --overwrite          Do not append postfixes, overwrites input files if file extension is the same
-  --strip_icc_profile  For conversion ops: remove icc_profile from image
-  --halign 0/1/2       For sz and sp2 op: horizontal alignment 0=left, 1=center, 2=right 
-  --valign 0/1/2       For sz and sp2 op: vertical alignment 0=top, 1=center, 2=bottom
-
-To run multiple operations use a comma separated list without spaces.
-Operations that require multiple input files should be run standalone.
-Otherwise the same operations will be done on each file specified (wildcards are allowed).
-Result is written to new file with operations as postfix unless --overwrite is specified.
-
-To show a list of all operations: imgop list
-'''
-
 
 def rounded_rectangle(draw, xy, corner_radius, fill=None, outline=None):
     upper_left_point = xy[0]
@@ -834,44 +808,46 @@ class Settings(object):
 
     def parse(self, opts):
         for o, a in opts:
-            if o == '-q':
-                self.save_opts.quality = int(a)
-                print('Setting quality to', self.save_opts.quality)
-            elif o == '-b':
+            if o == 'quality':
+                self.save_opts['quality'] = a
+            elif o == 'background':
                 self.bgcolor = None if a.lower() == 'none' else a
-                print('Setting background color to', self.bgcolor)
-            elif o == '-f':
-                self.frame = int(a)
-                print('Setting frame to', self.frame)
-            elif o == '-c':
-                self.cutoff = int(a)
-                print('Setting cutoff to', self.cutoff)
-            elif o == '-o':
-                self.output = a
-                print('Setting output filename to', self.output)
-            elif o == '-r':
-                m = re.match(r'(\d+)/(\d+)/(\d+)/(\d+)', a)
-                if m:
-                    self.crop_rect = [int(g) for g in m.groups()]
-                    print('Setting crop rectangle to', a)
-                else:
-                    print('Invalid crop rectangle, expected x1/y1/x2/y2')
-            elif o == '-x':
-                self.x = int(a)
-            elif o == '-y':
-                self.y = int(a)
-            elif o == '-h':
-                self.height = int(a)
-            elif o == '-w':
-                self.width = int(a)
-            elif o == '--overwrite':
-                self.overwrite = True
-            elif o == '--strip_icc_profile':
-                self.strip_icc_profile = True
-            elif o == '--halign':
-                self.halign = int(a)
-            elif o == '--valign':
-                self.valign = int(a)
+            elif o == 'frame':
+                self.frame = a
+            elif o == 'cutoff':
+                self.cutoff = a
+            elif o == 'output':
+                if a is not None:
+                    self.output = a
+                    print('Setting output filename to', self.output)
+            elif o == 'crop':
+                if a is not None:
+                    m = re.match(r'(\d+)/(\d+)/(\d+)/(\d+)', a)
+                    if m:
+                        self.crop_rect = [int(g) for g in m.groups()]
+                        print('Setting crop rectangle to', a)
+                    else:
+                        print('Invalid crop rectangle, expected x1/y1/x2/y2')
+            elif o == 'offset-x':
+                self.x = a
+            elif o == 'offset-y':
+                self.y = a
+            elif o == 'height':
+                if a is not None:
+                    self.height = a
+                    print('Setting height to', self.height)
+            elif o == 'width':
+                if a is not None:
+                    self.width = a
+                    print('Setting width to', self.width)
+            elif o == 'overwrite':
+                self.overwrite = a
+            elif o == 'strip_icc_profile':
+                self.strip_icc_profile = a
+            elif o == 'halign':
+                self.halign = a
+            elif o == 'valign':
+                self.valign = a
 
     def get_save_opts(self):
         save_opts = self.save_opts.copy()
@@ -971,53 +947,99 @@ def exec_single_ops(sops, files, settings):
                 print(fpath, ': ', type(err), str(err))
 
 
-def main(argv):
-    def usage(show_opers=False):
-        print('ImgOp 1.0 Copyright 2010-2022 Rene Smit')
-        if show_opers:
-            print('Operations:')
-            for o, desc in operlist:
-                print('  %-4s: %s' % (o.__name__, desc))
-        else:
-            print(usage_string)
-        sys.exit(2)
+def main(args):
+    if args.ops == 'list':
+        print('Operations:')
+        for o, desc in operlist:
+            print('  %-4s: %s' % (o.__name__, desc))
+        sys.exit(0)
 
-    if len(argv) < 2:
-        usage()
-    elif len(argv) == 2 and argv[1].lower() == 'list':
-        usage(True)
-
-    opers = argv[1].split(',')
+    opers = args.ops.split(',')
     if len(opers) == 1:
         if not opers[0] in opers_map:
-            usage()
+            print(f'Unknown operation {opers[0]}', file=sys.stderr)
+            sys.exit(2)
     else:
         for opname in opers:
             oper = opers_map.get(opname)
             if not oper or oper in multi_opers:
-                usage()
+                print(f'Unknown operation {oper}', file=sys.stderr)
+                sys.exit(2)
 
-    try:
-        params = argv[2:]
-        opts, args = getopt.getopt(params,
-                                   'q:b:f:c:o:r:x:y:w:h:',
-                                   ['overwrite', 'strip_icc_profile', 'halign=', 'valign='])
-        if len(args) == 0:
-            usage()
+    if len(args.files) == 0:
+        print(f'No files specified', file=sys.stderr)
+        sys.exit(2)
 
-        settings = Settings(opts)
-        files = expand_paths(args)
-        ops = [opers_map[opname] for opname in opers]
-        if len(ops) == 1 and ops[0] in multi_opers:
-            # multi_op: (operation that needs multiple input files)
-            exec_multi_op(ops[0], files, settings)
-        else:
-            # single_op: a single operation, or multiple operations applied to all input files
-            exec_single_ops(ops, files, settings)
-    except getopt.GetoptError as err:
-        print(str(err))
-        usage()
+    settings = Settings(args.__dict__.items())
+    files = expand_paths(args.files)
+    ops = [opers_map[opname] for opname in opers]
+    if len(ops) == 1 and ops[0] in multi_opers:
+        # multi_op: (operation that needs multiple input files)
+        exec_multi_op(ops[0], files, settings)
+    else:
+        # single_op: a single operation, or multiple operations applied to all input files
+        exec_single_ops(ops, files, settings)
+
+
+usage_string = '''Usage: imgop operation,... [options] file ...
+Options:
+  -o output            Output file name (requires one input file) 
+  -b background        Background color name or RGB/RGBA hex code with #, 'none' for transparent
+  -q quality           Output quality % (default 95)
+  -f frame             Frame index if input file is an animated GIF
+  -c cutoff            For ac op: cut-off % (default 5)
+  -r crop rect         For kr op: rectangle x1/y1/x2/y2
+  -x offset            For sz op: x offset in pixels, negative aligns at the right
+  -y offset            For sz op: y offset in pixels, negative aligns at the bottom
+  -w width             For rsz op: width in pixels
+  -h height            For rsz op: height in pixels
+  --overwrite          Do not append postfixes, overwrites input files if file extension is the same
+  --strip_icc_profile  For conversion ops: remove icc_profile from image
+  --halign 0/1/2       For sz and sp2 op: horizontal alignment 0=left, 1=center, 2=right 
+  --valign 0/1/2       For sz and sp2 op: vertical alignment 0=top, 1=center, 2=bottom
+
+To run multiple operations use a comma separated list without spaces.
+Operations that require multiple input files should be run standalone.
+Otherwise the same operations will be done on each file specified (wildcards are allowed).
+Result is written to new file with operations as postfix unless --overwrite is specified.
+
+To show a list of all operations: imgop list
+'''
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description='''Tool for image processing using a combination of operations.
+    
+To run multiple operations use a comma separated list without spaces.
+Operations that require multiple input files should be run standalone.
+Otherwise the same operations will be done on each file specified (wildcards are allowed).
+Result is written to new file with operations as postfix unless --overwrite is specified.
+''', add_help=False)
+    parser.add_argument('-o', '--output', type=str, help='Output file name (requires one input file)')
+    parser.add_argument('-b', '--background', type=str, default='#ffffff', help="Background color name or RGB/RGBA hex code with #, 'none' for transparent")
+    parser.add_argument('-q', '--quality', type=int, default=95, help='Output quality %% (default 95)')
+    parser.add_argument('-f', '--frame', type=int, default=0, help='Frame index if input file is an animated GIF')
+    parser.add_argument('-c', '--cutoff', type=int, default=5, help='For ac op: cut-off %% (default 5)')
+    parser.add_argument('-r', '--crop', type=str, help='For kr op: rectangle x1/y1/x2/y2')
+    parser.add_argument('-x', '--offset-x', type=int, help='For sz op: x offset in pixels, negative aligns at the right')
+    parser.add_argument('-y', '--offset-y', type=int, help='For sz op: y offset in pixels, negative aligns at the bottom')
+    parser.add_argument('-w', '--width', type=int, help='For rsz op: width in pixels')
+    parser.add_argument('-h', '--height', type=int, help='For rsz op: height in pixels')
+    parser.add_argument('--overwrite', action='store_true', help='Do not append postfixes, overwrites input files if file extension is the same')
+    parser.add_argument('--strip_icc_profile', action='store_true', help='For conversion ops: remove icc_profile from image')
+    parser.add_argument('--halign', type=int, choices=[0, 1, 2], default=0, help='For sz and sp2 op: horizontal alignment 0=left, 1=center, 2=right')
+    parser.add_argument('--valign', type=int, choices=[0, 1, 2], default=0, help='For sz and sp2 op: vertical alignment 0=top, 1=center, 2=bottom')
+
+    parser.add_argument('ops', help='Comma separated list of image processing operations, or "list" to show a list of operations')
+    parser.add_argument('files', nargs=argparse.ZERO_OR_MORE, help='Image files')
+
+    args = parser.parse_args()
+    if args.ops.lower() == 'help':
+        parser.print_help()
+        sys.exit(2)
+
+    return args
 
 
 if __name__ == "__main__":
-    main(sys.argv)
+    main(parse_args())
